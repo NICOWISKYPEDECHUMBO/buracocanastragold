@@ -842,7 +842,7 @@ html body .screen#sLadder #ladder.ladder{background:radial-gradient(ellipse at 5
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><linearGradient id="gGold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f8e08e"/><stop offset=".5" stop-color="#d4a23a"/><stop offset="1" stop-color="#8a5e12"/></linearGradient></defs></svg>
 <div id="app">
-<div id="introCapa" style="position:fixed;inset:0;background:#0a0502;z-index:89"></div>
+<div id="intro"><div class="iRJ"></div><div class="iRJ2"></div><div class="ic k" style="--x:-19.3vw;--y:35.3vh;--r:-98deg;animation-delay:0.00s">A<small style="font-size:.6em">♠</small></div><div class="ic r" style="--x:-38.6vw;--y:30.9vh;--r:-84deg;animation-delay:0.05s">K<small style="font-size:.6em">♥</small></div><div class="ic r" style="--x:-55.3vw;--y:19.4vh;--r:-70deg;animation-delay:0.10s">Q<small style="font-size:.6em">♦</small></div><div class="ic k" style="--x:-42.1vw;--y:3.9vh;--r:-56deg;animation-delay:0.15s">J<small style="font-size:.6em">♣</small></div><div class="ic j" style="--x:-42.8vw;--y:-10.6vh;--r:-42deg;animation-delay:0.20s">★</div><div class="ic r" style="--x:-33.2vw;--y:-25.8vh;--r:-28deg;animation-delay:0.25s">10<small style="font-size:.6em">♥</small></div><div class="ic k" style="--x:-8.7vw;--y:-22.0vh;--r:-14deg;animation-delay:0.30s">9<small style="font-size:.6em">♠</small></div><div class="ic r" style="--x:10.2vw;--y:-27.2vh;--r:0deg;animation-delay:0.35s">A<small style="font-size:.6em">♦</small></div><div class="ic k" style="--x:33.2vw;--y:-25.8vh;--r:14deg;animation-delay:0.40s">K<small style="font-size:.6em">♣</small></div><div class="ic r" style="--x:36.4vw;--y:-7.8vh;--r:28deg;animation-delay:0.45s">7<small style="font-size:.6em">♥</small></div><div class="ic k" style="--x:49.6vw;--y:3.2vh;--r:42deg;animation-delay:0.50s">2<small style="font-size:.6em">♠</small></div><div class="ic k" style="--x:55.3vw;--y:19.4vh;--r:56deg;animation-delay:0.55s">Q<small style="font-size:.6em">♣</small></div><div class="ic r" style="--x:32.8vw;--y:27.4vh;--r:70deg;animation-delay:0.60s">5<small style="font-size:.6em">♦</small></div><div class="ic r" style="--x:22.7vw;--y:40.1vh;--r:84deg;animation-delay:0.65s">J<small style="font-size:.6em">♥</small></div><div class="iFlash"></div><div class="iLogo">BURACO MALANDRO<small>A MESA DA RESENHA</small></div><div class="iPular">toque pra pular ▶</div></div>
 <section id="sMenu" class="screen on">
   <div class="hero"><img id="heroImg" alt="Os 12 jogadores da mesa de buraco"></div>
   <div class="mTop">
@@ -2385,15 +2385,14 @@ async function mensagensAdmin(){const {data,error}=await CONTA.sb.from('contatos
  const nl=(data||[]).filter(m=>!m.lida).map(m=>m.id);if(nl.length)CONTA.sb.from('contatos').update({lida:true}).in('id',nl).then(()=>{})}
 
 // abertura animada: cartas voando, logo com clarão, depois o menu entra e para
-function abertura(){const capa=$('#introCapa'),sm=$('#sMenu');const tira=()=>{if(capa)capa.remove()};if(!sm||!sm.classList.contains('on')){tira();return}
- if(location.hash.length>1||/[?&](pg|code|token|error)=/.test(location.search)||(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches)){tira();return}
- const it=document.createElement('div');it.id='intro';
- const cs=[['A','♠','k'],['K','♥','r'],['Q','♦','r'],['J','♣','k'],['★','','j'],['10','♥','r'],['9','♠','k'],['A','♦','r'],['K','♣','k'],['7','♥','r'],['2','♠','k'],['Q','♣','k'],['5','♦','r'],['J','♥','r']];
- it.innerHTML='<div class="iRJ"></div><div class="iRJ2"></div>'+cs.map((c,i)=>{const a=-Math.PI/2+(i/(cs.length-1)-.5)*Math.PI*1.7,d=34+(i%3)*6;return `<div class="ic ${c[2]}" style="--x:${(Math.cos(a)*d*1.25).toFixed(1)}vw;--y:${(Math.sin(a)*d*.9+8).toFixed(1)}vh;--r:${((i-7)*14)}deg;animation-delay:${(i*.05).toFixed(2)}s">${c[0]}${c[1]?'<small style="font-size:.6em">'+c[1]+'</small>':''}</div>`}).join('')+
-  '<div class="iFlash"></div><div class="iLogo">BURACO MALANDRO<small>A MESA DA RESENHA</small></div><div class="iPular">toque pra pular ▶</div>';
- sm.classList.add('entrando','espera');document.body.append(it);tira();let fim=false;
- const entra=()=>{if(fim)return;fim=true;sm.classList.remove('espera');it.style.animation='introFora .6s ease-in forwards';setTimeout(()=>it.remove(),700);setTimeout(()=>sm.classList.remove('entrando'),3300)};
- it.onclick=entra;const tecla=e=>{if(['Enter','Escape',' '].includes(e.key)){entra();document.removeEventListener('keydown',tecla)}};document.addEventListener('keydown',tecla);setTimeout(()=>{entra();document.removeEventListener('keydown',tecla)},3300)}
+function abertura(){const it=$('#intro'),sm=$('#sMenu');if(!it)return;
+ const pula=!sm||!sm.classList.contains('on')||location.hash.length>1||/[?&](pg|code|token|error)=/.test(location.search)||(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches);
+ if(pula){it.remove();return}
+ sm.classList.add('entrando','espera');let fim=false;
+ const entra=()=>{if(fim)return;fim=true;document.removeEventListener('keydown',tecla);sm.classList.remove('espera');it.style.animation='introFora .6s ease-in forwards';setTimeout(()=>it.remove(),700);setTimeout(()=>sm.classList.remove('entrando'),3300)};
+ const tecla=e=>{if(['Enter','Escape',' '].includes(e.key))entra()};
+ it.onclick=entra;document.addEventListener('keydown',tecla);
+ const ja=(window.performance&&performance.now())||0;setTimeout(entra,Math.max(400,3300-ja))}
 contaInit();
 $('#heroImg').src=HERO;
 abertura();
