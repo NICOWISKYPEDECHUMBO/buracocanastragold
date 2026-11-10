@@ -762,6 +762,9 @@ body>.chat:not(.flutua){display:none}
 html body .screen#sGallery #galBody.scroll{background:radial-gradient(ellipse at 50% 35%,#3cc46f 0%,#22a356 40%,#178a45 75%,#0f6b34 100%)!important}
 html body .screen#sLadder #ladder.ladder{background:radial-gradient(ellipse at 50% 35%,#3cc46f 0%,#22a356 40%,#178a45 75%,#0f6b34 100%)!important;border:6px solid #7a4a1f!important;border-radius:18px!important;padding:14px!important}
 #sLadder .ladRow,#sLadder .ladder>div{color:#fff}
+.proPlanos{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin:8px 0}
+.proPlano{flex:1;min-width:200px;max-width:260px;background:rgba(0,0,0,.3);border:2px solid #d8a040;border-radius:14px;padding:12px;text-align:center}
+.proPlano small{color:#e9ffe9}
 </style>
 </head>
 <body>
@@ -2006,8 +2009,8 @@ function contaScreen(){if(!CONTA.user)return loginScreen();const P=CONTA.perfil|
  <input id="ctApelido" maxlength="20" value="${(P.apelido||'').replace(/"/g,'')}" placeholder="Seu apelido" style="width:100%;padding:12px;border-radius:10px;border:2px solid #6b3a14;font-size:16px;margin:6px 0">
  <div class="row" style="flex-wrap:wrap;gap:8px;justify-content:center;margin-top:8px"><button class="btn sm" id="ctSalva">SALVAR APELIDO</button>${isPro()?'':'<button class="btn sm" id="ctPro">⭐ SEJA PRÓ</button>'}</div>
  <div class="row" style="flex-wrap:wrap;gap:8px;justify-content:center;margin-top:12px"><button class="btn dark sm" id="ctDados">BAIXAR MEUS DADOS</button><button class="btn dark sm" id="ctSair">SAIR</button><button class="btn dark sm" id="ctApaga">APAGAR CONTA</button></div>
- <p style="margin-top:10px"><a href="#" id="ctPol" style="color:var(--gold);font-size:13px">Política de privacidade</a></p>`,[['FECHAR']]);
- $('#ctPol').onclick=e=>{e.preventDefault();politica()};
+ ${P.admin?'<div style="margin-top:12px"><button class="btn sm" id="ctAdmin">🛠 LIBERAR PRÓ (ADMIN)</button></div>':''}<p style="margin-top:10px"><a href="#" id="ctPol" style="color:var(--gold);font-size:13px">Política de privacidade</a></p>`,[['FECHAR']]);
+ $('#ctPol').onclick=e=>{e.preventDefault();politica()};if($('#ctAdmin'))$('#ctAdmin').onclick=painelAdmin;
  $('#ctSalva').onclick=async()=>{const ap=$('#ctApelido').value.trim().slice(0,20);await CONTA.sb.from('perfis').update({apelido:ap||null}).eq('id',CONTA.user.id);CONTA.perfil.apelido=ap;updConta();contaScreen()};
  if($('#ctPro'))$('#ctPro').onclick=proScreen;
  $('#ctSair').onclick=async()=>{await CONTA.sb.auth.signOut();closeModal&&closeModal();updConta()};
@@ -2017,18 +2020,31 @@ function contaScreen(){if(!CONTA.user)return loginScreen();const P=CONTA.perfil|
   const {data,error}=await CONTA.sb.functions.invoke('apagar-conta',{body:{confirmo:'APAGAR'}});
   if(error||!data||!data.ok)return modal('<h2>ERRO</h2><p>Não consegui apagar agora. Tente de novo.</p>',[['OK']]);
   await CONTA.sb.auth.signOut();modal('<h2>CONTA APAGADA</h2><p>Seus dados foram apagados.</p>',[['OK']]);updConta()})}
-function proScreen(motivo){if(!ONLINE)return;if(!CONTA.user){return modal(`<h2>⭐ PRÓ</h2><p>${motivo||'Entre na sua conta pra assinar o Pró.'}</p>`,[['ENTRAR',loginScreen],['AGORA NÃO']])}
+const LINKS_PRO={mensal:'https://pag.ae/82kkyMXeo',anual:'https://pag.ae/82kkFfSG6'};
+const BTN_PB='https://assets.pagseguro.com.br/ps-integration-assets/botoes/pagamentos/205x30-pagar.gif';
+function proScreen(motivo){if(!ONLINE)return;if(!CONTA.user){return modal(`<h2>⭐ PRÓ</h2><p>${motivo||'Entre na sua conta pra assinar o Pró.'}</p>`,[['ENTRAR',loginScreen],['AGORA NÃO',null,'dark']])}
+ const plano=(k,titulo,preco,sub)=>`<div class="proPlano"><div class="bang" style="font-size:22px;color:var(--gold)">${titulo}</div><div style="font-size:26px;font-weight:800">${preco}</div><small>${sub}</small>
+  <button class="btn sm proPagar" data-p="${k}" style="margin-top:8px;width:100%">ASSINAR ${titulo}</button>
+  <a class="proOficial" data-p="${k}" href="${LINKS_PRO[k]}" target="_blank" rel="noopener" title="Pagar com PagBank"><img src="${BTN_PB}" alt="Pague com PagBank - é rápido, grátis e seguro!" style="width:205px;max-width:100%;height:auto;background:#fff;border-radius:6px;padding:2px;margin-top:8px"></a></div>`;
  modal(`<h2>⭐ SEJA PRÓ</h2>${motivo?`<p>${motivo}</p>`:''}
- <p style="text-align:left;font-size:14px">✔ Partidas sem limite<br>✔ Modo Desafio e os cinturões<br>✔ Modo Batida<br>✔ Torneios de hora em hora com troféu na galeria<br>✔ Salas online com amigos</p>
- <div class="row" style="gap:10px;justify-content:center;flex-wrap:wrap">
-  <button class="btn" id="prM" style="min-width:150px">MENSAL<br><b style="font-size:20px">${PRECO.mensal[0]}</b><br><small>${PRECO.mensal[1]}</small></button>
-  <button class="btn" id="prA" style="min-width:150px">ANUAL<br><b style="font-size:20px">${PRECO.anual[0]}</b><br><small>${PRECO.anual[1]}</small></button></div>
- <p style="font-size:12px;color:var(--muted)">Pagamento seguro pelo PagBank: Pix, cartão de crédito ou débito.</p><p id="prMsg" style="color:var(--gold)"></p>`,[['AGORA NÃO']]);
- const go=async plano=>{$('#prMsg').textContent='Abrindo o PagBank...';
-  const {data,error}=await CONTA.sb.functions.invoke('pagbank-checkout',{body:{plano,volta:location.origin+location.pathname}});
-  if(error||!data||!data.link){let m='Não consegui abrir o pagamento agora.';try{const j=await error.context.json();if(j.erro)m=j.erro}catch(e){}$('#prMsg').textContent=m;return}
-  location.href=data.link};
- $('#prM').onclick=()=>go('mensal');$('#prA').onclick=()=>go('anual')}
+ <p style="text-align:left;font-size:14px;margin:4px 0">✔ Partidas sem limite ✔ Desafio e cinturões ✔ Modo Batida ✔ Torneios de hora em hora ✔ Salas online com amigos</p>
+ <div class="proPlanos">${plano('mensal','MENSAL','R$ 14,90','por 30 dias')}${plano('anual','ANUAL','R$ 119,90','por 1 ano · economize 33%')}</div>
+ <div style="background:rgba(0,0,0,.3);border:2px solid #d8a040;border-radius:12px;padding:10px;text-align:left;font-size:14px;margin:8px 0">
+  <b>Importante:</b> no pagamento, informe o e-mail da sua conta do jogo:<br><b style="color:var(--gold);font-size:16px">${esc(CONTA.user.email)}</b><br>
+  Assim que o pagamento for confirmado, o seu Pró é liberado nessa conta.</div>
+ <p style="font-size:12px;color:var(--muted)">Pagamento seguro pelo PagBank: Pix ou cartão.</p>`,[['AGORA NÃO',null,'dark']]);
+ const depois=()=>setTimeout(()=>{closeModal();modal('<h2>QUASE LÁ!</h2><p>Conclua o pagamento na página do PagBank usando o e-mail <b>'+esc(CONTA.user.email)+'</b>.</p><p>Quando o pagamento for confirmado, o Pró aparece aqui na sua conta. É só abrir o jogo de novo.</p>',[['OK']])},300);
+ document.querySelectorAll('.proPagar').forEach(b=>b.onclick=()=>{window.open(LINKS_PRO[b.dataset.p],'_blank','noopener');depois()});
+ document.querySelectorAll('.proOficial').forEach(a=>a.onclick=depois)}
+function painelAdmin(){modal(`<h2>🛠 LIBERAR PRÓ</h2><p>Digite o e-mail de quem pagou pelo link (a pessoa precisa já ter conta no jogo).</p>
+ <input id="adEmail" type="email" placeholder="email@cliente.com" style="width:100%;padding:12px;border-radius:10px;border:2px solid #6b3a14;font-size:16px;margin:6px 0">
+ <div class="row" style="gap:8px;justify-content:center;flex-wrap:wrap"><button class="btn" id="ad30">LIBERAR 30 DIAS</button><button class="btn" id="ad365">LIBERAR 1 ANO</button></div>
+ <p id="adMsg" style="color:var(--gold);min-height:20px"></p>`,[['FECHAR',null,'dark']]);
+ const lib=async dias=>{const em=$('#adEmail').value.trim();if(!em.includes('@'))return $('#adMsg').textContent='Confira o e-mail.';$('#adMsg').textContent='Liberando...';
+  const {data,error}=await CONTA.sb.functions.invoke('admin-pro',{body:{email:em,dias}});
+  if(error||!data||!data.ok){let m='Não deu certo.';try{const j=await error.context.json();if(j.erro)m=j.erro}catch(e){}$('#adMsg').textContent=m;return}
+  $('#adMsg').innerHTML='✔ Pró liberado pra <b>'+esc(em)+'</b> até '+new Date(data.pro_ate).toLocaleDateString('pt-BR')+'.';$('#adEmail').value=''};
+ $('#ad30').onclick=()=>lib(30);$('#ad365').onclick=()=>lib(365)}
 // limite do plano grátis: 4 partidas por dia
 function podeJogar(cfg){if(isPro())return true;
  if(cfg&&cfg.desafio){proScreen('O modo Desafio é do plano Pró.');return false}
