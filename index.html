@@ -2146,12 +2146,12 @@ function loginScreen(aba){if(!CONTA.sb)return modal('<h2>SEM CONEXÃO</h2><p>Nã
    if(!$('#lgOk').checked)return msg('Marque a caixinha pra continuar.');
    localStorage.setItem('buraco_aceite','1');if(ap)localStorage.setItem('buraco_apelido',ap);
    $('#lgGo').disabled=true;msg('Criando sua conta...');
-   const {data,error}=await CONTA.sb.auth.signUp({email:em,password:se,options:{emailRedirectTo:location.href.split('#')[0].split('?')[0]}});
+   const r=await CONTA.sb.functions.invoke('cadastro',{body:{email:em,senha:se,apelido:ap,aceite:true}});
+   if(r.error||!r.data||!r.data.ok){let t='Não deu certo. Tente de novo.';try{const j=await r.error.context.json();if(j.erro)t=j.erro}catch(x){}$('#lgGo').disabled=false;return msg(t)}
+   const {error}=await CONTA.sb.auth.signInWithPassword({email:em,password:se});
    $('#lgGo').disabled=false;
-   if(error)return msg(/already|registered/i.test(error.message)?'Esse e-mail já tem conta. Toque em JÁ TENHO CONTA.':/weak|pwned|leaked/i.test(error.message)?'Essa senha é fraca ou já vazou na internet. Escolha outra.':'Não deu certo: '+error.message);
-   if(data.session){gerarCodigo('🎉 CONTA CRIADA! GUARDE SEU CÓDIGO');return}
-   if(data.user&&data.user.identities&&data.user.identities.length===0)return msg('Esse e-mail já tem conta. Toque em JÁ TENHO CONTA.');
-   modal(`<h2>QUASE LÁ!</h2><p>Mandamos um e-mail pra <b style="color:var(--gold)">${esc(em)}</b>.</p><p>Toque no link do e-mail <b>uma vez só</b> pra confirmar a conta. Pode ser no celular.</p><p>Depois disso, você entra sempre com <b>e-mail e senha</b>.</p>`,[['ENTENDI']]);return}
+   if(error)return msg('Conta criada! Agora toque em JÁ TENHO CONTA e entre.');
+   gerarCodigo('🎉 CONTA CRIADA! GUARDE SEU CÓDIGO');return}
   if(!se)return msg('Digite sua senha.');
   $('#lgGo').disabled=true;msg('Entrando...');
   const {error}=await CONTA.sb.auth.signInWithPassword({email:em,password:se});
