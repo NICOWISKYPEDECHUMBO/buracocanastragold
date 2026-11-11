@@ -2095,7 +2095,15 @@ function erroDoLink(){const q=new URLSearchParams((location.hash||'').slice(1)+'
 async function contaInit(){if(!ONLINE)return updConta();erroDoLink();try{await loadSb();CONTA.sb=supabase.createClient(SB_URL,SB_KEY);
  CONTA.sb.auth.onAuthStateChange((_e,s)=>{CONTA.user=s?.user||null;if(_e==='PASSWORD_RECOVERY')setTimeout(novaSenhaScreen,600);if(CONTA.user)carregaPerfil();else{CONTA.perfil=null;updConta()}});
  const {data}=await CONTA.sb.auth.getSession();CONTA.user=data.session?.user||null;if(CONTA.user)await carregaPerfil();updConta();consultaTeste(false)}catch(e){updConta()}}
-async function carregaPerfil(){const {data}=await CONTA.sb.from('perfis').select('*').eq('id',CONTA.user.id).maybeSingle();CONTA.perfil=data||{};setTimeout(confereCodigo,1500);
+// Pró ao vivo: quando o admin libera (ou o pagamento confirma), a tela atualiza na hora, sem F5
+function perfilAoVivo(){if(!CONTA.user||CONTA.pfCanal===CONTA.user.id)return;
+ if(CONTA.pfSub)try{CONTA.sb.removeChannel(CONTA.pfSub)}catch(e){}
+ CONTA.pfCanal=CONTA.user.id;
+ CONTA.pfSub=CONTA.sb.channel('perfil-'+CONTA.user.id).on('postgres_changes',{event:'UPDATE',schema:'public',table:'perfis',filter:'id=eq.'+CONTA.user.id},ev=>{
+  const antes=isPro();CONTA.perfil={...(CONTA.perfil||{}),...ev.new};const agora=isPro();updConta();
+  if(!antes&&agora){closeModal();bigToast('⭐ PRÓ LIBERADO!');setTimeout(()=>modal(`<h2>⭐ SEU PRÓ FOI LIBERADO!</h2><p>Agora é tudo liberado: partidas sem limite, Desafio, Batida, torneios e mesas online.</p><p>Válido até <b style="color:var(--gold)">${new Date(CONTA.perfil.pro_ate).toLocaleDateString('pt-BR')}</b>.</p>`,[['BORA JOGAR!']]),400)}
+  else if(antes&&agora&&ev.old&&ev.new.pro_ate)bigToast('⭐ PRÓ RENOVADO!')}).subscribe()}
+async function carregaPerfil(){const {data}=await CONTA.sb.from('perfis').select('*').eq('id',CONTA.user.id).maybeSingle();CONTA.perfil=data||{};perfilAoVivo();setTimeout(confereCodigo,1500);
  if(!CONTA.perfil.aceite_termos_em&&localStorage.getItem('buraco_aceite'))await CONTA.sb.from('perfis').update({aceite_termos_em:new Date().toISOString(),apelido:localStorage.getItem('buraco_apelido')||null}).eq('id',CONTA.user.id);
  await confereTodos();
  updConta();consultaTeste(false)}
