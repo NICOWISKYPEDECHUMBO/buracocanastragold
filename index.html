@@ -839,6 +839,9 @@ html body .screen#sLadder #ladder.ladder{background:radial-gradient(ellipse at 5
 @media (prefers-reduced-motion: reduce){.canFx i,.canRing,.canFlash{display:none}}
 #lgGoogle{background:#fff!important;color:#1f1f1f!important;border:2px solid #dadce0!important;box-shadow:0 3px 0 #9a9a9a!important;text-shadow:none!important}
 #lgGoogle:hover{background:#f3f3f3!important}
+#mbox{position:relative}
+.mX{position:absolute;top:8px;right:10px;width:36px;height:36px;border-radius:50%;border:2px solid #d8a040;background:#2a1408;color:#ffd84d;font:900 18px/1 Arial,sans-serif;cursor:pointer;z-index:2}
+.mX:hover{background:#4a2610}
 </style>
 </head>
 <body>
@@ -2173,10 +2176,14 @@ function mostraCodigo(cod,titulo){modal(`<h2>${titulo||'🧾 SEU CÓDIGO DE RECU
 async function gerarCodigo(titulo){const {data,error}=await CONTA.sb.functions.invoke('recuperacao',{body:{acao:'gerar'}});
  if(error||!data||!data.codigo)return modal('<h2>CÓDIGO</h2><p>Não consegui gerar agora. Tente de novo em Minha Conta.</p>',[['OK']]);
  mostraCodigo(data.codigo,titulo)}
-async function confereCodigo(){if(!CONTA.user)return;const k='buraco_rc_'+CONTA.user.id,hoje=new Date().toDateString();if(localStorage.getItem(k)===hoje)return;
- try{const {data}=await CONTA.sb.functions.invoke('recuperacao',{body:{acao:'tem'}});if(!data||data.tem)return localStorage.setItem(k,hoje);
-  localStorage.setItem(k,hoje);const tenta=()=>{if($('#modal').classList.contains('on')||!$('#sMenu').classList.contains('on'))return setTimeout(tenta,4000);
-   modal('<h2>🧾 PROTEJA SUA CONTA</h2><p>Crie seu <b>código de recuperação</b>. Com ele você troca a senha se esquecer, sem precisar de e-mail.</p>',[['CRIAR MEU CÓDIGO',()=>gerarCodigo()],['DEPOIS',null,'dark']])};setTimeout(tenta,2500)}catch(e){}}
+async function confereCodigo(){if(!CONTA.user)return;const k='buraco_rc_'+CONTA.user.id,v=localStorage.getItem(k);
+ if(v==='nunca'||v==='tem'||(v&&Date.now()<+v))return;
+ try{const {data}=await CONTA.sb.functions.invoke('recuperacao',{body:{acao:'tem'}});if(!data)return;if(data.tem)return localStorage.setItem(k,'tem');
+  localStorage.setItem(k,String(Date.now()+7*864e5));// no máximo 1 lembrete por semana
+  const tenta=()=>{if($('#modal').classList.contains('on')||!$('#sMenu').classList.contains('on'))return setTimeout(tenta,4000);
+   modal('<h2>🧾 PROTEJA SUA CONTA</h2><p>Crie seu <b>código de recuperação</b>. Com ele você troca a senha se esquecer, sem precisar de e-mail.</p><p style="font-size:12px;color:var(--muted)">Você também pode criar depois em Minha Conta.</p>',
+    [['CRIAR MEU CÓDIGO',()=>{localStorage.setItem(k,'tem');gerarCodigo()}],['LEMBRAR DEPOIS',null,'dark'],['NÃO MOSTRAR MAIS',()=>localStorage.setItem(k,'nunca'),'dark']]);
+   const x=document.createElement('button');x.className='mX';x.title='Fechar e não mostrar mais';x.textContent='✕';x.onclick=()=>{localStorage.setItem(k,'nunca');closeModal()};$('#mbox').prepend(x)};setTimeout(tenta,2500)}catch(e){}}
 function recuperarComCodigo(em){modal(`<h2>🧾 USAR MEU CÓDIGO</h2><p>Digite seu e-mail, o código de recuperação e a senha nova.</p>
  <input id="rcEmail" type="email" value="${esc(em||'')}" placeholder="seu@email.com" style="width:100%;padding:12px;border-radius:10px;border:2px solid #6b3a14;font-size:16px;margin:5px 0">
  <input id="rcCod" placeholder="BURACO-XXXXX-XXXXX" autocomplete="off" style="width:100%;padding:12px;border-radius:10px;border:2px solid #6b3a14;font-size:18px;margin:5px 0;text-transform:uppercase;letter-spacing:.05em">
