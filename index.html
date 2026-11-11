@@ -850,6 +850,11 @@ html body .screen#sLadder #ladder.ladder{background:radial-gradient(ellipse at 5
 #sMenu .mTop{box-sizing:border-box;width:100%;max-width:100vw;padding-right:max(18px,2vw)!important}
 #sMenu .mTopR,#sMenu .mTopL{flex-wrap:nowrap;min-width:0}
 #sMenu .mTop .btn{white-space:nowrap}
+#pLixo.lxSel{outline:4px solid #ffd84d;outline-offset:4px;border-radius:10px;box-shadow:0 0 0 6px rgba(0,0,0,.5),0 0 26px #ffcf33;animation:lxPulse 1s ease-in-out infinite alternate}
+@keyframes lxPulse{from{box-shadow:0 0 0 6px rgba(0,0,0,.5),0 0 12px #ffcf33}to{box-shadow:0 0 0 6px rgba(0,0,0,.5),0 0 32px #ffd84d}}
+#sGame .board .mArea.ours .meld{cursor:pointer}
+/* caderno sem tremer: nada de barra de rolagem lateral */
+.nb{overflow-x:hidden!important;scrollbar-width:thin;scrollbar-gutter:stable}
 </style>
 </head>
 <body>
@@ -1208,7 +1213,7 @@ function aiNextMeld(p){const st=S.seats[p].style||{},t=teamOf(p),h=S.hands[p],T=
  // 3) curingas
  const wilds=h.filter(isW);
  if(wilds.length){const w=wilds[0];
-  const allowDirty=fast||(conv&&(late()||hasLimpa(t)||(S.aberto&&h.length>=13)))||(!conv&&hasLimpa(t));
+  const allowDirty=fast||(late()&&h.length<=4);// curinga (2) só quando for mesmo necessário: pra bater, fugir do perigo ou no fim do monte
   if(allowDirty&&!(st.wildKeep&&!fast&&!late())){
    // nunca suja a única canastra limpa; prefere sujar o jogo menos promissor
    let longest=-1,ll=0;T.melds.forEach((m,i)=>{if(!m.a.wild&&m.cards.length>ll){ll=m.cards.length;longest=i}});
@@ -1589,7 +1594,7 @@ function startHand(){G.handNo++;G.token++;G.sel.clear();G.fresh.clear();G.flash.
 const alive=tk=>G&&G.token===tk&&S&&!S.over;
 function nm(p){return G.names[p]}
 function deName(n){return n.startsWith('O ')?'do '+n.slice(2):n.startsWith('A ')?'da '+n.slice(2):n.startsWith('Vovô')?'do '+n:'de '+n}
-function nextTurn(){if(G&&G.online)return;if(!G||S.over)return;renderGame();const p=S.turn;clearTimeout(G.idleT);
+function nextTurn(){if(G)G.lixoSel=false;if(G&&G.online)return;if(!G||S.over)return;renderGame();const p=S.turn;clearTimeout(G.idleT);
  if(p===0){G.sel.clear();renderGame();anim($('#yourTurn'),'on',1400);startTimer();setMsg(S.pending[0]?'Você está com o morto. Compre do MONTE ou pegue o LIXO.':'Sua vez: compre do <b>MONTE</b> ou toque no <b>LIXO</b>.');
   const tk=G.token;G.idleT=setTimeout(()=>{if(G&&G.token===tk&&S.turn===0)act('idle')},14000+rndInt(6000))}
  else aiTurn(p)}
@@ -1693,7 +1698,7 @@ function renderGame(){if(!G||!S)return;
   e.onclick=()=>{if(S.turn!==0||S.over)return;if(G.sel.has(c.id))G.sel.delete(c.id);else G.sel.add(c.id);renderGame()};H.append(e)}
  G.fresh.clear();
  const play=myTurn&&S.phase==='play';const ns=G.sel.size;
- $('#bMeld').disabled=!(play&&ns>=3);$('#bDisc').disabled=!(play&&ns===1);
+ $('#bMeld').disabled=!((play&&ns>=3)||(myTurn&&S.phase==='draw'&&G.lixoSel&&ns>=2));$('#bDisc').disabled=!(play&&ns===1);
  $('#mOurArea').classList.toggle('target',play&&ns>0&&S.teams[0].melds.length>0);
  $('#bFast').classList.toggle('on',G.fast);updTurn();fitBoard();const ms=$('#meSeat');if(ms){if(!ms.dataset.k){ms.dataset.k=1;ms.innerHTML=`<img src="${G.imgs[0]}" alt=""><span>${myName()}</span>`}ms.classList.toggle('turn',S.turn===0&&!S.over)}}
 function zoomMeld(t,i){const m=S.teams[t].melds[i];if(!m)return;const k=canKind(m.a);const pts=m.cards.reduce((a,c)=>a+cval(c),0);
@@ -1770,24 +1775,20 @@ async function onLixo(e,preset){if(e&&e.stopPropagation)e.stopPropagation();if(!
  let choice=preset||null;
  if(choice){}else if(S.aberto){const opts=lixoOptions(0,null);if(!opts.length){setMsg('O lixo está vazio.');return}choice=opts[0]}
  else{const sel=selCards(),top=S.lixo[S.lixo.length-1];
-  if(sel.length&&sel.some(c=>c.r===2)&&S.teams[0].melds.some(m=>{const a=arrange([...m.cards,top,...sel]);return a&&a.wild&&a.wild.r===2&&a.wild.s!==a.suit})&&!lixoOptions(0,sel).some(o=>o.type==='add'&&o.score===99)){setMsg('Pra pegar o lixo, o 2 tem que ser do mesmo naipe do jogo (ou use o Coringa).');return}
-  // todas as formas possíveis de usar a carta do lixo com o que você selecionou
-  let opts=[...(sel.length?lixoOptions(0,sel).filter(o=>o.type==='add'&&o.score===99):[]),...lixoOptions(0,null).filter(o=>o.type==='add'&&!o.extra)];
-  const vistos=new Set();opts=opts.filter(o=>{const k=o.i+'|'+(o.extra?o.extra.length:0);if(vistos.has(k))return false;vistos.add(k);return true});
-  let erroNovo='';
+  // fechado: com 2+ cartas da mão selecionadas, o toque no lixo já baixa o jogo novo com a carta do topo
   if(sel.length>=2){const a=arrange([top,...sel]);
-   if(!a)erroNovo='Essas cartas não formam sequência com o '+cardTxt(top)+'.';
-   else if(a.wild&&a.wild.r===2&&a.wild.s!==a.suit)erroNovo='Pra pegar o lixo, o 2 tem que ser do mesmo naipe do jogo.';
-   else if(!leftOK(0,S.hands[0].length+S.lixo.length-1-sel.length,-1,a,true))erroNovo=emptyMsg(0);
-   else opts.push({type:'new',cards:sel,a,score:100})}
-  if(!opts.length){setMsg(erroNovo||('Pra pegar o lixo: o '+cardTxt(top)+' tem que encaixar num jogo seu, ou selecione na mão as cartas que fazem jogo com ele (mínimo 3 contando ela) e toque no LIXO.'));return}
-  choice=opts.length===1?opts[0]:await escolheLixo(opts,top);
-  if(!choice||!G)return}
- clearTimeout(G.idleT);G.anim=true;await flyCards(S.lixo.slice(-6),R2($('#pLixo')),R2($('#hand')),{dur:480});G.anim=false;if(!G)return;
+   if(!a){setMsg('Essas cartas não formam sequência com o '+cardTxt(top)+'.');return}
+   if(a.wild&&a.wild.r===2&&a.wild.s!==a.suit){setMsg('Pra pegar o lixo, o 2 tem que ser do mesmo naipe do jogo.');return}
+   if(!leftOK(0,S.hands[0].length+S.lixo.length-1-sel.length,-1,a,true)){setMsg(emptyMsg(0));return}
+   G.lixoSel=false;choice={type:'new',cards:sel,a,score:100}}
+  else{ // sem seleção: marca a carta do topo; depois a pessoa toca no jogo da mesa onde ela vai
+   G.lixoSel=!G.lixoSel;renderGame();
+   setMsg(G.lixoSel?'Carta do lixo marcada ('+cardTxt(top)+'). Toque no <b>jogo da mesa</b> onde ela vai, ou selecione <b>2 cartas da mão</b> que combinam com ela e toque em <b>BAIXAR</b>.':'Lixo desmarcado. Compre do MONTE ou toque no LIXO.');return}}
+ G.lixoSel=false;clearTimeout(G.idleT);G.anim=true;await flyCards(S.lixo.slice(-6),R2($('#pLixo')),R2($('#hand')),{dur:480});G.anim=false;if(!G)return;
  if(G.online){const ids=(choice.type==='new'?choice.cards:(choice.extra||[])).map(c=>c.id);const antes=new Set(S.hands[0].map(x=>x.id));G.sel.clear();if(await enviaOnline({acao:'lixo',tipo:choice.type,i:choice.i,ids})){S.hands[0].forEach(c=>{if(!antes.has(c.id))G.fresh.add(c.id)});renderGame();setMsg('Lixo é seu! Selecione cartas e toque na MESA pra baixar.')}return}
  const pile=S.lixo.slice();takeLixo(0,choice);pile.forEach(c=>{if(S.hands[0].includes(c))G.fresh.add(c.id)});G.sel.clear();flush();renderGame();if(S.over)return handOver();
  startTimer();setMsg('Lixo é seu! Selecione cartas e toque na MESA pra baixar.')}
-async function onBaixar(){if(!myPlay()||G.anim)return;const cs=selCards();const err=canMeldNew(0,cs);if(err){setMsg(err);return}
+async function onBaixar(){if(G&&S&&G.lixoSel&&myDraw()&&!G.anim)return onLixo(null);if(!myPlay()||G.anim)return;const cs=selCards();const err=canMeldNew(0,cs);if(err){setMsg(err);return}
  if(G.online){G.sel.clear();await enviaOnline({acao:'baixar',ids:cs.map(c=>c.id)});return}
  const from=R2(selEls()[0]);G.anim=true;meldNew(0,cs);G.sel.clear();flush();renderGame();const el=lastMeldEl(0);
  await flyCards(cs,from,R2(el),{dur:450,tos:cardTargets(0,cs)});G.anim=false;if(!G)return;if(S.over)return handOver()}
@@ -2536,6 +2537,7 @@ function visualScreen(){const V=prog.visual=prog.visual||{verso:'foto'};
  document.querySelectorAll('.visOp').forEach(b=>b.onclick=()=>{prog.visual.verso=b.dataset.v;save();aplicaVisual();visualScreen()})}
 aplicaVisual();
 $('#bVisual').onclick=visualScreen;
+{const _rg=renderGame;renderGame=function(){const r=_rg.apply(this,arguments);const l=$('#pLixo');if(l)l.classList.toggle('lxSel',!!(G&&G.lixoSel&&S&&S.phase==='draw'&&S.turn===0));return r}}
 contaInit();
 $('#heroImg').src=HERO;
 abertura();
@@ -2576,7 +2578,7 @@ function showBook(o){// o:{title,rows:[[label,us,them,cls]],hist:[[label,us,them
  B.onclick=e=>{if(bookRun&&!e.target.closest('#bkGo'))finish()};
  const move=el=>{if(el.scrollIntoView)el.scrollIntoView({block:'nearest'});const nbE=$('#nb'),nb=nbE.getBoundingClientRect();let r=el.getBoundingClientRect();
    if(el.firstChild&&el.firstChild.nodeType===3){const rg=document.createRange();rg.selectNodeContents(el);const rs=rg.getClientRects();if(rs.length)r=rs[rs.length-1]}
-   const sc=nb.width/(nbE.offsetWidth||nb.width)||1,ponta=r.bottom-Math.min(6,r.height*.18);const x=(r.right-nb.left)/sc-nbE.clientLeft,y=(ponta-nb.top)/sc-nbE.clientTop+nbE.scrollTop;pen.style.transform='';pen.style.translate=`${Math.round(x-11)}px ${Math.round(y-88)}px`};
+   const sc=nb.width/(nbE.offsetWidth||nb.width)||1,ponta=r.bottom-Math.min(6,r.height*.18);const x=(r.right-nb.left)/sc-nbE.clientLeft,y=(ponta-nb.top)/sc-nbE.clientTop+nbE.scrollTop;pen.style.transform='';const maxX=nbE.clientWidth-26;pen.style.translate=`${Math.round(Math.min(maxX,x-11))}px ${Math.round(y-88)}px`};
  (async()=>{await sleep(350);
   for(const j of jobs){if(tk.stop)return;
    if(j.line){move(j.line.parentNode);j.line.style.width='100%';await sleep(420);continue}
