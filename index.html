@@ -2085,10 +2085,14 @@ const ONLINE=location.protocol==='https:'&&!/claude|anthropic/.test(location.hos
 const CONTA={sb:null,user:null,perfil:null};
 const PRECO={mensal:['R$ 14,90','por mês'],anual:['R$ 119,90','por ano · economize 33%']};
 function loadSb(){return new Promise((res,rej)=>{if(window.supabase)return res();const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js';s.onload=res;s.onerror=()=>rej(new Error('sem internet'));document.head.append(s)})}
-async function contaInit(){if(!ONLINE)return updConta();try{await loadSb();CONTA.sb=supabase.createClient(SB_URL,SB_KEY);
+function erroDoLink(){const q=new URLSearchParams((location.hash||'').slice(1)+'&'+(location.search||'').slice(1));const d=q.get('error_description')||q.get('error');if(!d)return;
+ history.replaceState(null,'',location.pathname);
+ const vencido=/expired|invalid|not found/i.test(d+' '+(q.get('error_code')||''));
+ setTimeout(()=>modal('<h2>LINK VENCIDO</h2><p>'+(vencido?'Esse link já foi usado ou venceu. Os links valem só uma vez e por pouco tempo.':'Não deu certo: '+esc(d))+'</p><p>Peça um novo e use <b>o e-mail mais recente</b>.</p>',[['PEDIR OUTRO',()=>esqueciSenha('')],['FECHAR',null,'dark']]),900)}
+async function contaInit(){if(!ONLINE)return updConta();erroDoLink();try{await loadSb();CONTA.sb=supabase.createClient(SB_URL,SB_KEY);
  CONTA.sb.auth.onAuthStateChange((_e,s)=>{CONTA.user=s?.user||null;if(_e==='PASSWORD_RECOVERY')setTimeout(novaSenhaScreen,600);if(CONTA.user)carregaPerfil();else{CONTA.perfil=null;updConta()}});
  const {data}=await CONTA.sb.auth.getSession();CONTA.user=data.session?.user||null;if(CONTA.user)await carregaPerfil();updConta();consultaTeste(false)}catch(e){updConta()}}
-async function carregaPerfil(){const {data}=await CONTA.sb.from('perfis').select('*').eq('id',CONTA.user.id).maybeSingle();CONTA.perfil=data||{};
+async function carregaPerfil(){const {data}=await CONTA.sb.from('perfis').select('*').eq('id',CONTA.user.id).maybeSingle();CONTA.perfil=data||{};setTimeout(confereCodigo,1500);
  if(!CONTA.perfil.aceite_termos_em&&localStorage.getItem('buraco_aceite'))await CONTA.sb.from('perfis').update({aceite_termos_em:new Date().toISOString(),apelido:localStorage.getItem('buraco_apelido')||null}).eq('id',CONTA.user.id);
  await confereTodos();
  updConta();consultaTeste(false)}
@@ -2142,7 +2146,7 @@ function loginScreen(aba){if(!CONTA.sb)return modal('<h2>SEM CONEXÃO</h2><p>Nã
    const {data,error}=await CONTA.sb.auth.signUp({email:em,password:se,options:{emailRedirectTo:location.href.split('#')[0].split('?')[0]}});
    $('#lgGo').disabled=false;
    if(error)return msg(/already|registered/i.test(error.message)?'Esse e-mail já tem conta. Toque em JÁ TENHO CONTA.':/weak|pwned|leaked/i.test(error.message)?'Essa senha é fraca ou já vazou na internet. Escolha outra.':'Não deu certo: '+error.message);
-   if(data.session){closeModal();bigToast('BEM-VINDO À MESA!');return}
+   if(data.session){gerarCodigo('🎉 CONTA CRIADA! GUARDE SEU CÓDIGO');return}
    if(data.user&&data.user.identities&&data.user.identities.length===0)return msg('Esse e-mail já tem conta. Toque em JÁ TENHO CONTA.');
    modal(`<h2>QUASE LÁ!</h2><p>Mandamos um e-mail pra <b style="color:var(--gold)">${esc(em)}</b>.</p><p>Toque no link do e-mail <b>uma vez só</b> pra confirmar a conta. Pode ser no celular.</p><p>Depois disso, você entra sempre com <b>e-mail e senha</b>.</p>`,[['ENTENDI']]);return}
   if(!se)return msg('Digite sua senha.');
@@ -2158,12 +2162,43 @@ function entrarGoogle(confirmado){
   $('#ggGo').onclick=()=>{if(!$('#ggOk').checked)return $('#ggMsg').textContent='Marque a caixinha pra continuar.';localStorage.setItem('buraco_aceite','1');entrarGoogle(true)};
  CONTA.sb.auth.signInWithOAuth({provider:'google',options:{redirectTo:location.href.split('#')[0].split('?')[0],queryParams:{prompt:'select_account'}}}).then(({error})=>{
   if(error)modal('<h2>GOOGLE</h2><p>'+(/not enabled|provider/i.test(error.message)?'O login com Google ainda não foi ligado no servidor.':'Não deu certo: '+esc(error.message))+'</p>',[['OK']])})}
-function esqueciSenha(em){modal(`<h2>ESQUECI MINHA SENHA</h2><p>Digite seu e-mail. Mandamos um link pra você criar uma senha nova.</p>
+/* ===== código de recuperação (esqueceu a senha sem precisar de e-mail) ===== */
+function mostraCodigo(cod,titulo){modal(`<h2>${titulo||'🧾 SEU CÓDIGO DE RECUPERAÇÃO'}</h2>
+ <p>Se um dia esquecer a senha, é com este código que você cria uma nova. <b>Sem e-mail, sem esperar ninguém.</b></p>
+ <div style="background:#fff7d6;color:#3a1d00;border:3px dashed #d8a040;border-radius:12px;padding:14px;margin:10px 0;font:900 clamp(22px,4vw,34px)/1.2 'Courier New',monospace;letter-spacing:.06em;user-select:all">${esc(cod)}</div>
+ <p style="font-size:15px">📸 <b>Tire uma FOTO desta tela</b> ou anote num papel e guarde.</p>
+ <p style="font-size:12px;color:var(--muted)">Ninguém da equipe consegue ver este código depois. Se perder, é só gerar outro em Minha Conta.</p>
+ <button class="btn sm dark" id="rcCopia">📋 COPIAR CÓDIGO</button>`,[['JÁ GUARDEI ✔']]);
+ $('#rcCopia').onclick=()=>{try{navigator.clipboard.writeText(cod);$('#rcCopia').textContent='✔ COPIADO'}catch(e){}}}
+async function gerarCodigo(titulo){const {data,error}=await CONTA.sb.functions.invoke('recuperacao',{body:{acao:'gerar'}});
+ if(error||!data||!data.codigo)return modal('<h2>CÓDIGO</h2><p>Não consegui gerar agora. Tente de novo em Minha Conta.</p>',[['OK']]);
+ mostraCodigo(data.codigo,titulo)}
+async function confereCodigo(){if(!CONTA.user)return;const k='buraco_rc_'+CONTA.user.id,hoje=new Date().toDateString();if(localStorage.getItem(k)===hoje)return;
+ try{const {data}=await CONTA.sb.functions.invoke('recuperacao',{body:{acao:'tem'}});if(!data||data.tem)return localStorage.setItem(k,hoje);
+  localStorage.setItem(k,hoje);const tenta=()=>{if($('#modal').classList.contains('on')||!$('#sMenu').classList.contains('on'))return setTimeout(tenta,4000);
+   modal('<h2>🧾 PROTEJA SUA CONTA</h2><p>Crie seu <b>código de recuperação</b>. Com ele você troca a senha se esquecer, sem precisar de e-mail.</p>',[['CRIAR MEU CÓDIGO',()=>gerarCodigo()],['DEPOIS',null,'dark']])};setTimeout(tenta,2500)}catch(e){}}
+function recuperarComCodigo(em){modal(`<h2>🧾 USAR MEU CÓDIGO</h2><p>Digite seu e-mail, o código de recuperação e a senha nova.</p>
+ <input id="rcEmail" type="email" value="${esc(em||'')}" placeholder="seu@email.com" style="width:100%;padding:12px;border-radius:10px;border:2px solid #6b3a14;font-size:16px;margin:5px 0">
+ <input id="rcCod" placeholder="BURACO-XXXXX-XXXXX" autocomplete="off" style="width:100%;padding:12px;border-radius:10px;border:2px solid #6b3a14;font-size:18px;margin:5px 0;text-transform:uppercase;letter-spacing:.05em">
+ <input id="rcS1" type="password" autocomplete="new-password" placeholder="Senha nova (8+ com letras e números)" style="width:100%;padding:12px;border-radius:10px;border:2px solid #6b3a14;font-size:16px;margin:5px 0">
+ <input id="rcS2" type="password" autocomplete="new-password" placeholder="Repita a senha nova" style="width:100%;padding:12px;border-radius:10px;border:2px solid #6b3a14;font-size:16px;margin:5px 0">
+ <button class="btn" id="rcGo">CRIAR SENHA NOVA</button><p id="rcMsg" style="color:var(--gold);min-height:20px"></p>`,[['VOLTAR',()=>esqueciSenha(em),'dark']]);
+ $('#rcGo').onclick=async()=>{const e2=$('#rcEmail').value.trim(),c=$('#rcCod').value.trim(),a=$('#rcS1').value,b=$('#rcS2').value,m=t=>$('#rcMsg').textContent=t;
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e2))return m('Confira o e-mail.');if(c.replace(/[^A-Za-z0-9]/g,'').length<10)return m('Digite o código completo.');
+  if(a.length<SENHA_MIN||!/[A-Za-z]/.test(a)||!/\d/.test(a))return m('A senha nova precisa ter 8 caracteres ou mais, com letras e números.');if(a!==b)return m('As duas senhas não estão iguais.');
+  $('#rcGo').disabled=true;m('Conferindo...');
+  const {data,error}=await CONTA.sb.functions.invoke('recuperacao',{body:{acao:'usar',email:e2,codigo:c,senha:a}});
+  if(error||!data||!data.ok){let t='Não deu certo.';try{const j=await error.context.json();if(j.erro)t=j.erro}catch(x){}$('#rcGo').disabled=false;return m(t)}
+  await CONTA.sb.auth.signInWithPassword({email:e2,password:a});
+  mostraCodigo(data.novo_codigo,'✔ SENHA TROCADA! SEU CÓDIGO NOVO')}}
+function esqueciSenha(em){modal(`<h2>ESQUECI MINHA SENHA</h2><button class="btn" id="esCod" style="width:100%;margin:4px 0 10px">🧾 TENHO MEU CÓDIGO DE RECUPERAÇÃO</button><p style="font-size:13px;color:var(--muted);margin:0 0 6px">Não tem o código? Mandamos um link pro seu e-mail:</p>
  <input id="esEmail" type="email" value="${esc(em||'')}" placeholder="seu@email.com" style="width:100%;padding:12px;border-radius:10px;border:2px solid #6b3a14;font-size:16px;margin:5px 0">
- <button class="btn" id="esGo">MANDAR LINK</button><p id="esMsg" style="color:var(--gold);min-height:20px"></p>`,[['VOLTAR',()=>loginScreen('entrar'),'dark']]);
+ <button class="btn" id="esGo">MANDAR LINK</button><p id="esMsg" style="color:var(--gold);min-height:20px"></p><p style="font-size:13px;color:var(--muted)">O e-mail não chegou? Fale com o <a href="#" id="esSup" style="color:var(--gold)">💬 SUPORTE</a> que a gente te ajuda a entrar.</p>`,[['VOLTAR',()=>loginScreen('entrar'),'dark']]);
+ $('#esSup').onclick=e=>{e.preventDefault();faleComigo()};
+ $('#esCod').onclick=()=>recuperarComCodigo($('#esEmail').value.trim());
  $('#esGo').onclick=async()=>{const e2=$('#esEmail').value.trim();if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e2))return $('#esMsg').textContent='Confira o e-mail.';
   $('#esGo').disabled=true;const {error}=await CONTA.sb.auth.resetPasswordForEmail(e2,{redirectTo:location.href.split('#')[0].split('?')[0]});
-  $('#esMsg').textContent=error?(/seconds|rate/i.test(error.message)?'Espere um minutinho antes de pedir de novo.':'Não deu certo: '+error.message):'Pronto! Abra o link no seu e-mail pra criar a senha nova.';if(error)$('#esGo').disabled=false}}
+  $('#esMsg').textContent=error?(/seconds|rate|limit/i.test(error.message)?'Muitos pedidos agora. Espere alguns minutos e tente de novo (use o e-mail mais recente).':'Não deu certo: '+error.message):'Pronto! Abra o link no seu e-mail pra criar a senha nova.';if(error)$('#esGo').disabled=false}}
 function novaSenhaScreen(){modal(`<h2>NOVA SENHA</h2><p>Crie sua senha nova (mínimo ${SENHA_MIN} caracteres, com letras e números).</p>
  <input id="nsS1" type="password" autocomplete="new-password" placeholder="Senha nova" style="width:100%;padding:12px;border-radius:10px;border:2px solid #6b3a14;font-size:16px;margin:5px 0">
  <input id="nsS2" type="password" autocomplete="new-password" placeholder="Repita a senha" style="width:100%;padding:12px;border-radius:10px;border:2px solid #6b3a14;font-size:16px;margin:5px 0">
@@ -2178,9 +2213,9 @@ function contaScreen(){if(!CONTA.user)return loginScreen();const P=CONTA.perfil|
  modal(`<h2>MINHA CONTA</h2><p style="color:var(--muted)">${CONTA.user.email}</p>${pro}
  <input id="ctApelido" maxlength="20" value="${(P.apelido||'').replace(/"/g,'')}" placeholder="Seu apelido" style="width:100%;padding:12px;border-radius:10px;border:2px solid #6b3a14;font-size:16px;margin:6px 0">
  <div class="row" style="flex-wrap:wrap;gap:8px;justify-content:center;margin-top:8px"><button class="btn sm" id="ctSalva">SALVAR APELIDO</button>${isPro()?'':'<button class="btn sm" id="ctPro">⭐ SEJA PRÓ</button>'}</div>
- <div class="row" style="flex-wrap:wrap;gap:8px;justify-content:center;margin-top:12px"><button class="btn dark sm" id="ctSenha">🔑 TROCAR SENHA</button><button class="btn dark sm" id="ctDados">BAIXAR MEUS DADOS</button><button class="btn dark sm" id="ctSair">SAIR</button><button class="btn dark sm" id="ctApaga">APAGAR CONTA</button></div>
+ <div class="row" style="flex-wrap:wrap;gap:8px;justify-content:center;margin-top:12px"><button class="btn dark sm" id="ctSenha">🔑 TROCAR SENHA</button><button class="btn dark sm" id="ctCod">🧾 CÓDIGO DE RECUPERAÇÃO</button><button class="btn dark sm" id="ctDados">BAIXAR MEUS DADOS</button><button class="btn dark sm" id="ctSair">SAIR</button><button class="btn dark sm" id="ctApaga">APAGAR CONTA</button></div>
  ${P.admin?'<div style="margin-top:12px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="btn sm" id="ctAdmin">🛠 LIBERAR PRÓ (ADMIN)</button><button class="btn sm" id="ctMsgs">📬 MENSAGENS</button></div>':''}<p style="margin-top:10px"><a href="#" id="ctPol" style="color:var(--gold);font-size:13px">Política de privacidade</a></p>`,[['FECHAR']]);
- $('#ctPol').onclick=e=>{e.preventDefault();politica()};$('#ctSenha').onclick=novaSenhaScreen;if($('#ctAdmin'))$('#ctAdmin').onclick=painelAdmin;if($('#ctMsgs'))$('#ctMsgs').onclick=mensagensAdmin;
+ $('#ctPol').onclick=e=>{e.preventDefault();politica()};$('#ctSenha').onclick=novaSenhaScreen;$('#ctCod').onclick=()=>confirmBox('Gerar um código de recuperação novo? Se você já tinha um, o antigo para de funcionar.',()=>gerarCodigo());if($('#ctAdmin'))$('#ctAdmin').onclick=painelAdmin;if($('#ctMsgs'))$('#ctMsgs').onclick=mensagensAdmin;
  $('#ctSalva').onclick=async()=>{const ap=$('#ctApelido').value.trim().slice(0,20);await CONTA.sb.from('perfis').update({apelido:ap||null}).eq('id',CONTA.user.id);CONTA.perfil.apelido=ap;updConta();contaScreen()};
  if($('#ctPro'))$('#ctPro').onclick=proScreen;
  $('#ctSair').onclick=async()=>{await CONTA.sb.auth.signOut();closeModal&&closeModal();updConta()};
@@ -2190,26 +2225,44 @@ function contaScreen(){if(!CONTA.user)return loginScreen();const P=CONTA.perfil|
   const {data,error}=await CONTA.sb.functions.invoke('apagar-conta',{body:{confirmo:'APAGAR'}});
   if(error||!data||!data.ok)return modal('<h2>ERRO</h2><p>Não consegui apagar agora. Tente de novo.</p>',[['OK']]);
   await CONTA.sb.auth.signOut();modal('<h2>CONTA APAGADA</h2><p>Seus dados foram apagados.</p>',[['OK']]);updConta()})}
-const LINKS_PRO={mensal:'https://pag.ae/82kkyMXeo',anual:'https://pag.ae/82kkFfSG6'};
+// links do PagBank: assinatura (cobra sozinho no cartão) e pagamento único (Pix ou cartão, sem renovação)
+const LINKS_PRO={assina:{mensal:'https://pag.ae/82kkyMXeo',anual:'https://pag.ae/82kkFfSG6'},unico:{mensal:'https://pag.ae/82kq6prG6',anual:'https://pag.ae/82kq7N7sM'}};
 const BTN_PB='https://assets.pagseguro.com.br/ps-integration-assets/botoes/pagamentos/205x30-pagar.gif';
 function proScreen(motivo){if(!ONLINE)return;if(!CONTA.user){return modal(`<h2>⭐ PRÓ</h2><p>${motivo||'Entre na sua conta pra assinar o Pró.'}</p>`,[['ENTRAR',loginScreen],['AGORA NÃO',null,'dark']])}
  const plano=(k,titulo,preco,sub)=>`<div class="proPlano"><div class="bang" style="font-size:22px;color:var(--gold)">${titulo}</div><div style="font-size:26px;font-weight:800">${preco}</div><small>${sub}</small>
-  <button class="btn sm proPagar" data-p="${k}" style="margin-top:8px;width:100%">ASSINAR ${titulo}</button>
-  <a class="proOficial" data-p="${k}" href="${LINKS_PRO[k]}" target="_blank" rel="noopener" title="Pagar com PagBank"><img src="${BTN_PB}" alt="Pague com PagBank - é rápido, grátis e seguro!" style="width:205px;max-width:100%;height:auto;background:#fff;border-radius:6px;padding:2px;margin-top:8px"></a></div>`;
+  ${LINKS_PRO.unico[k]?`<button class="btn sm proPagar" data-t="unico" data-p="${k}" style="margin-top:8px;width:100%">💠 PAGAR AGORA<br><small style="font-size:11px">pagamento único · você renova manualmente</small></button>`:''}
+  <button class="btn sm dark proPagar" data-t="assina" data-p="${k}" style="margin-top:8px;width:100%">🔁 AUTOMÁTICO<br><small style="font-size:11px">renovação automática (opcional)</small></button>
+  <a class="proOficial" href="${LINKS_PRO.unico[k]||LINKS_PRO.assina[k]}" data-t="${LINKS_PRO.unico[k]?'unico':'assina'}" data-p="${k}" target="_blank" rel="noopener" title="Pagar com PagBank"><img src="${BTN_PB}" alt="Pague com PagBank - é rápido, grátis e seguro!" style="width:205px;max-width:100%;height:auto;background:#fff;border-radius:6px;padding:2px;margin-top:8px"></a></div>`;
  modal(`<h2>⭐ SEJA PRÓ</h2>${motivo?`<p>${motivo}</p>`:''}
  <p style="text-align:left;font-size:14px;margin:4px 0">✔ Partidas sem limite ✔ Desafio e cinturões ✔ Modo Batida ✔ Torneios de hora em hora ✔ Salas online com amigos</p>
- <div class="proPlanos">${plano('mensal','MENSAL','R$ 14,90','por 30 dias')}${plano('anual','ANUAL','R$ 119,90','por 1 ano · economize 33%')}</div>
+ <div class="proPlanos">${plano('mensal','MENSAL','R$ 14,90','30 dias')}${plano('anual','ANUAL','R$ 119,90','1 ano · economize 33%')}</div>
+ <div style="background:rgba(0,0,0,.3);border:2px solid #d8a040;border-radius:12px;padding:10px;text-align:left;font-size:13px;margin:8px 0;line-height:1.45">
+  <b style="color:var(--gold);font-size:15px">QUAL É A DIFERENÇA?</b><br>
+  <b>💠 PAGAR AGORA (pagamento único)</b> — você paga <b>uma vez só</b>, com Pix ou cartão, e tem o Pró por 30 dias (ou 1 ano). Quando acabar, <b>nada mais é cobrado</b>: se quiser continuar, você mesmo renova pagando de novo.<br><br>
+  <b>🔁 AUTOMÁTICO (renovação automática opcional)</b> — só se você quiser: o valor é <b>cobrado sozinho no seu cartão</b> todo mês (ou todo ano) e o seu Pró <b>nunca desliga</b>. Pode cancelar quando quiser, direto no PagBank.<br><br>
+  <b>Não quer nada automático?</b> Escolha <b>PAGAR AGORA</b>.</div>
  <div style="background:rgba(0,0,0,.3);border:2px solid #d8a040;border-radius:12px;padding:10px;text-align:left;font-size:14px;margin:8px 0">
   <b>Importante:</b> no pagamento, informe o e-mail da sua conta do jogo:<br><b style="color:var(--gold);font-size:16px">${esc(CONTA.user.email)}</b><br>
   Assim que o pagamento for confirmado, o seu Pró é liberado nessa conta.</div>
- <p style="font-size:12px;color:var(--muted)">Pagamento seguro pelo PagBank: Pix ou cartão.</p>`,[['AGORA NÃO',null,'dark']]);
+ <p style="font-size:12px;color:var(--muted)">Pagamento seguro pelo PagBank.</p>`,[['AGORA NÃO',null,'dark']]);
  const depois=()=>setTimeout(()=>{closeModal();modal('<h2>QUASE LÁ!</h2><p>Conclua o pagamento na página do PagBank usando o e-mail <b>'+esc(CONTA.user.email)+'</b>.</p><p>Quando o pagamento for confirmado, o Pró aparece aqui na sua conta. É só abrir o jogo de novo.</p>',[['OK']])},300);
- document.querySelectorAll('.proPagar').forEach(b=>b.onclick=()=>{window.open(LINKS_PRO[b.dataset.p],'_blank','noopener');depois()});
+ document.querySelectorAll('.proPagar').forEach(b=>b.onclick=()=>{window.open(LINKS_PRO[b.dataset.t][b.dataset.p],'_blank','noopener');depois()});
  document.querySelectorAll('.proOficial').forEach(a=>a.onclick=depois)}
 function painelAdmin(){modal(`<h2>🛠 LIBERAR PRÓ</h2><p>Digite o e-mail de quem pagou pelo link (a pessoa precisa já ter conta no jogo).</p>
  <input id="adEmail" type="email" placeholder="email@cliente.com" style="width:100%;padding:12px;border-radius:10px;border:2px solid #6b3a14;font-size:16px;margin:6px 0">
  <div class="row" style="gap:8px;justify-content:center;flex-wrap:wrap"><button class="btn" id="ad30">LIBERAR 30 DIAS</button><button class="btn" id="ad365">LIBERAR 1 ANO</button></div>
- <p id="adMsg" style="color:var(--gold);min-height:20px"></p>`,[['FECHAR',null,'dark']]);
+ <p id="adMsg" style="color:var(--gold);min-height:20px"></p>
+ <hr style="border:0;border-top:2px solid rgba(216,160,64,.4);margin:10px 0">
+ <h3 style="margin:4px 0;color:var(--gold)">🔑 JOGADOR ESQUECEU A SENHA</h3>
+ <p style="font-size:13px">Digite o e-mail dele. O jogo cria uma senha provisória pra você passar pra ele (WhatsApp, por exemplo). Depois ele troca em Minha Conta.</p>
+ <input id="adEmail2" type="email" placeholder="email@jogador.com" style="width:100%;padding:12px;border-radius:10px;border:2px solid #6b3a14;font-size:16px;margin:6px 0">
+ <button class="btn sm" id="adSenha">GERAR SENHA PROVISÓRIA</button>
+ <p id="adMsg2" style="color:var(--gold);min-height:20px"></p>`,[['FECHAR',null,'dark']]);
+ $('#adSenha').onclick=()=>{const em=$('#adEmail2').value.trim();if(!em.includes('@'))return $('#adMsg2').textContent='Confira o e-mail.';
+  confirmBox('Criar uma senha nova pra <b>'+esc(em)+'</b>? A senha antiga dele para de funcionar.',async()=>{painelAdmin();$('#adEmail2').value=em;$('#adMsg2').textContent='Gerando...';
+   const {data,error}=await CONTA.sb.functions.invoke('admin-senha',{body:{email:em}});
+   if(error||!data||!data.ok){let m='Não deu certo.';try{const j=await error.context.json();if(j.erro)m=j.erro}catch(e){}$('#adMsg2').textContent=m;return}
+   $('#adMsg2').innerHTML='Senha provisória de <b>'+esc(em)+'</b>:<br><b style="font-size:24px;letter-spacing:.08em;user-select:all">'+esc(data.senha)+'</b><br><small>Passe pra ele e peça pra trocar em Minha Conta → TROCAR SENHA.</small>'})}
  const lib=async dias=>{const em=$('#adEmail').value.trim();if(!em.includes('@'))return $('#adMsg').textContent='Confira o e-mail.';$('#adMsg').textContent='Liberando...';
   const {data,error}=await CONTA.sb.functions.invoke('admin-pro',{body:{email:em,dias}});
   if(error||!data||!data.ok){let m='Não deu certo.';try{const j=await error.context.json();if(j.erro)m=j.erro}catch(e){}$('#adMsg').textContent=m;return}
@@ -2444,6 +2497,11 @@ function abertura(){const it=$('#intro'),sm=$('#sMenu');if(!it)return;
  const tecla=e=>{if(['Enter','Escape',' '].includes(e.key))entra()};
  it.onclick=entra;document.addEventListener('keydown',tecla);
  const ja=(window.performance&&performance.now())||0;setTimeout(entra,Math.max(400,3300-ja))}
+// link de e-mail vencido ou já usado: avisa em vez de não acontecer nada
+(function(){const q=new URLSearchParams((location.hash||'').replace(/^#/,'')+'&'+(location.search||'').replace(/^\?/,''));
+ if(q.get('error_code')||q.get('error_description')){const venc=/expired|invalid/i.test(q.get('error_code')+' '+q.get('error_description'));
+  history.replaceState(null,'',location.pathname);
+  setTimeout(()=>modal('<h2>LINK VENCIDO</h2><p>'+(venc?'Esse link do e-mail já foi usado ou venceu. Use sempre o <b>e-mail mais recente</b>.':'O link do e-mail não funcionou.')+'</p><p>Peça outro em <b>ENTRAR → Esqueci minha senha</b>.</p>',[['ESQUECI MINHA SENHA',()=>esqueciSenha('')],['FECHAR',null,'dark']]),1200)}})();
 contaInit();
 $('#heroImg').src=HERO;
 abertura();
